@@ -139,6 +139,7 @@ async def _run_collector():
 
             # Enrich with threat intelligence
             enrich_alert(alert_data)
+            threat_intel_ctx = alert_data.pop("threat_intel", None)
 
             async with async_session() as session:
                 result = await execute_playbook(session, alert_data, detection_engine)

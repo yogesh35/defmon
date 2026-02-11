@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SOC Dashboard — Mini SIEM + SOAR</title>
+    <link rel="stylesheet" href="/static/css/dashboard.css">
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <!-- Leaflet -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+</head>
+<body>
+    <!-- ── Header ──────────────────────────────────────────────────────── -->
+    <header>
+        <div class="header-left">
+            <span class="logo">🛡️</span>
+            <h1>Mini SIEM + SOAR</h1>
+            <span class="subtitle">Security Operations Center</span>
+        </div>
+        <div class="header-right">
+            <span id="ws-status" class="ws-dot disconnected" title="WebSocket"></span>
+            <span id="clock"></span>
+        </div>
+    </header>
+
+    <!-- ── KPI Cards ───────────────────────────────────────────────────── -->
+    <section class="kpi-row">
+        <div class="kpi-card">
+            <div class="kpi-value" id="kpi-logs">0</div>
+            <div class="kpi-label">Total Logs</div>
+        </div>
+        <div class="kpi-card kpi-danger">
+            <div class="kpi-value" id="kpi-alerts">0</div>
+            <div class="kpi-label">Total Alerts</div>
+        </div>
+        <div class="kpi-card kpi-warning">
+            <div class="kpi-value" id="kpi-open">0</div>
+            <div class="kpi-label">Open Alerts</div>
+        </div>
+        <div class="kpi-card kpi-info">
+            <div class="kpi-value" id="kpi-incidents">0</div>
+            <div class="kpi-label">Incidents</div>
+        </div>
+        <div class="kpi-card kpi-dark">
+            <div class="kpi-value" id="kpi-blocked">0</div>
+            <div class="kpi-label">Blocked IPs</div>
+        </div>
+    </section>
+
+    <!-- ── Main Grid ───────────────────────────────────────────────────── -->
+    <main class="dashboard-grid">
+
+        <!-- Live Feed -->
+        <section class="card card-feed">
+            <h2>🔴 Live Attack Feed</h2>
+            <div id="live-feed" class="feed-list"></div>
+        </section>
+
+        <!-- Geo Map -->
+        <section class="card card-map">
+            <h2>🌍 Attack Origins</h2>
+            <div id="geo-map"></div>
+        </section>
+
+        <!-- Alert Timeline -->
+        <section class="card card-timeline">
+            <h2>📈 Alert Timeline</h2>
+            <canvas id="chart-timeline"></canvas>
+        </section>
+
+        <!-- Attack Distribution -->
+        <section class="card card-pie">
+            <h2>🎯 Attack Types</h2>
+            <canvas id="chart-attacks"></canvas>
+        </section>
+
+        <!-- Severity Breakdown -->
+        <section class="card card-severity">
+            <h2>⚠️ Severity Breakdown</h2>
+            <canvas id="chart-severity"></canvas>
+        </section>
+
+        <!-- Top IPs -->
+        <section class="card card-ips">
+            <h2>🏴‍☠️ Top Attacking IPs</h2>
+            <table id="table-ips">
+                <thead><tr><th>IP</th><th>Alerts</th><th>Action</th></tr></thead>
+                <tbody></tbody>
+            </table>
+        </section>
+
+        <!-- Recent Alerts Table -->
+        <section class="card card-alerts">
+            <h2>🚨 Recent Alerts</h2>
+            <div class="filter-bar">
+                <select id="filter-severity">
+                    <option value="">All Severities</option>
+                    <option value="critical">Critical</option>
+                    <option value="high">High</option>
+                    <option value="medium">Medium</option>
+                    <option value="low">Low</option>
+                </select>
+                <input type="text" id="filter-ip" placeholder="Filter by IP…" />
+                <button onclick="loadAlerts()">🔍 Search</button>
+            </div>
+            <table id="table-alerts">
+                <thead>
+                    <tr>
+                        <th>Time</th><th>Severity</th><th>Rule</th>
+                        <th>IP</th><th>Description</th><th>MITRE</th><th>Status</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </section>
+
+        <!-- Response Actions -->
+        <section class="card card-actions">
+            <h2>🤖 SOAR Response Actions</h2>
+            <table id="table-actions">
+                <thead><tr><th>Time</th><th>Action</th><th>Target</th><th>Detail</th></tr></thead>
+                <tbody></tbody>
+            </table>
+        </section>
+
+        <!-- Incidents -->
+        <section class="card card-incidents">
+            <h2>📋 Incidents</h2>
+            <table id="table-incidents">
+                <thead>
+                    <tr>
+                        <th>ID</th><th>Time</th><th>Severity</th>
+                        <th>Title</th><th>Status</th><th>MITRE</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </section>
+
+        <!-- Log Search -->
+        <section class="card card-logs">
+            <h2>🔎 Log Search</h2>
+            <div class="filter-bar">
+                <input type="text" id="log-ip" placeholder="Source IP…" />
+                <input type="text" id="log-url" placeholder="URL contains…" />
+                <select id="log-source">
+                    <option value="">All Sources</option>
+                    <option value="access">Access</option>
+                    <option value="auth">Auth</option>
+                    <option value="app">App</option>
+                </select>
+                <button onclick="loadLogs()">🔍 Search</button>
+            </div>
+            <table id="table-logs">
+                <thead>
+                    <tr><th>Time</th><th>IP</th><th>Method</th><th>URL</th><th>Status</th><th>Source</th></tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </section>
+
+    </main>
+
+    <footer>
+        <p>Mini SIEM + SOAR Platform • Cybersecurity Engineering Project • <span id="footer-year"></span></p>
+    </footer>
+
+    <script src="/static/js/dashboard.js"></script>
+</body>
+</html>

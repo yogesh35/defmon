@@ -1,0 +1,30 @@
+version: "3.9"
+
+services:
+  siem:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: mini-siem-soar
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - LOG_FILE=/app/data/logs/access.log
+      - AUTH_LOG_FILE=/app/data/logs/auth.log
+      - APP_LOG_FILE=/app/data/logs/app.log
+      - DATABASE_URL=sqlite+aiosqlite:///./data/db/siem.db
+    restart: unless-stopped
+
+  simulator:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: siem-simulator
+    command: python -m simulator.generate_logs --rate medium
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      - siem
+    restart: unless-stopped

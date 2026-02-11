@@ -1,4 +1,4 @@
-/* ── Mini SIEM + SOAR — Dashboard JavaScript ─────────────────────── */
+/* ── Defmon — Dashboard JavaScript ────────────────────────────────── */
 
 const API = '';   // same origin
 let ws = null;
@@ -7,16 +7,79 @@ let mapMarkers = [];
 let chartTimeline = null;
 let chartAttacks = null;
 let chartSeverity = null;
+let authToken = null;
+let currentUser = null;
 
 // ── Initialization ──────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('footer-year').textContent = new Date().getFullYear();
+
+    // Check for saved session
+    const saved = localStorage.getItem('defmon_token');
+    if (saved) {
+        authToken = saved;
+        currentUser = JSON.parse(localStorage.getItem('defmon_user') || '{}');
+        showDashboard();
+    }
+});
+
+// ── Authentication ──────────────────────────────────────────────────
+async function handleLogin(event) {
+    event.preventDefault();
+    const username = document.getElementById('login-user').value;
+    const password = document.getElementById('login-pass').value;
+    const errorEl = document.getElementById('login-error');
+    const btn = document.getElementById('login-btn');
+
+    btn.disabled = true;
+    btn.textContent = 'Signing in…';
+    errorEl.textContent = '';
+
+    try {
+        const res = await fetch('/api/auth/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username, password }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+            errorEl.textContent = data.detail || 'Login failed';
+            return;
+        }
+        authToken = data.token;
+        currentUser = data.user;
+        localStorage.setItem('defmon_token', authToken);
+        localStorage.setItem('defmon_user', JSON.stringify(currentUser));
+        showDashboard();
+    } catch (e) {
+        errorEl.textContent = 'Connection error';
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'Sign In';
+    }
+}
+
+function handleLogout() {
+    authToken = null;
+    currentUser = null;
+    localStorage.removeItem('defmon_token');
+    localStorage.removeItem('defmon_user');
+    document.getElementById('login-page').style.display = 'flex';
+    document.getElementById('dashboard-page').style.display = 'none';
+    if (ws) ws.close();
+}
+
+function showDashboard() {
+    document.getElementById('login-page').style.display = 'none';
+    document.getElementById('dashboard-page').style.display = 'block';
+    document.getElementById('user-info').textContent =
+        `${currentUser.full_name || currentUser.username} (${currentUser.role})`;
     startClock();
     initMap();
     connectWebSocket();
     refreshAll();
-    setInterval(refreshAll, 10000); // refresh every 10s
-});
+    setInterval(refreshAll, 10000);
+}
 
 function startClock() {
     const el = document.getElementById('clock');
@@ -35,13 +98,12 @@ function connectWebSocket() {
     };
     ws.onclose = () => {
         document.getElementById('ws-status').className = 'ws-dot disconnected';
-        setTimeout(connectWebSocket, 3000);
+        if (authToken) setTimeout(connectWebSocket, 3000);
     };
     ws.onmessage = (event) => {
         const msg = JSON.parse(event.data);
         if (msg.type === 'alert') {
             addToLiveFeed(msg.data);
-            // Quick KPI bump
             const el = document.getElementById('kpi-alerts');
             el.textContent = parseInt(el.textContent || '0') + 1;
         }
@@ -65,10 +127,8 @@ function addToLiveFeed(data) {
         </span>
     `;
     feed.prepend(item);
-    // Keep max 100 items
     while (feed.children.length > 100) feed.removeChild(feed.lastChild);
 
-    // Add map marker
     if (data.latitude && data.longitude) {
         addMapMarker(data);
     }
@@ -95,7 +155,6 @@ function addMapMarker(data) {
 }
 
 function loadGeoPoints(points) {
-    // Clear old markers
     mapMarkers.forEach(m => map.removeLayer(m));
     mapMarkers = [];
     points.forEach(p => {
@@ -114,6 +173,8 @@ async function refreshAll() {
         renderAlerts(stats.recent_alerts || []);
         loadIncidents();
         loadActions();
+        loadLockedAccounts();
+        loadThreatIntel();
     } catch (e) {
         console.error('Refresh failed:', e);
     }
@@ -130,6 +191,7 @@ function updateKPIs(stats) {
     document.getElementById('kpi-open').textContent = formatNum(stats.open_alerts);
     document.getElementById('kpi-incidents').textContent = formatNum(stats.total_incidents);
     document.getElementById('kpi-blocked').textContent = formatNum(stats.total_blocked);
+    document.getElementById('kpi-locked').textContent = formatNum(stats.total_locked_accounts || 0);
 }
 
 // ── Charts ──────────────────────────────────────────────────────────
@@ -188,7 +250,6 @@ function updateCharts(stats) {
         });
     }
 
-    // Top IPs table
     renderTopIPs(stats.top_ips || []);
 }
 
@@ -214,6 +275,7 @@ function renderTopIPs(ips) {
         <tr>
             <td><code>${ip.ip}</code></td>
             <td>${ip.count}</td>
+            <td><button class="btn-sm btn-ti" onclick="lookupThreatIPDirect('${ip.ip}')">🕵️ Intel</button></td>
             <td><button class="btn-sm" onclick="blockIP('${ip.ip}')">Block</button></td>
         </tr>
     `).join('');
@@ -250,11 +312,67 @@ async function loadActions() {
     tbody.innerHTML = actions.map(a => `
         <tr>
             <td>${formatTime(a.timestamp)}</td>
-            <td><span class="badge badge-${a.action_type === 'block_ip' ? 'critical' : 'medium'}">${a.action_type}</span></td>
+            <td><span class="badge badge-${a.action_type === 'block_ip' ? 'critical' : a.action_type === 'lock_account' ? 'high' : 'medium'}">${a.action_type}</span></td>
             <td><code>${a.target}</code></td>
             <td>${truncate(a.detail, 80)}</td>
         </tr>
     `).join('');
+}
+
+async function loadLockedAccounts() {
+    const accounts = await fetchJSON('/api/locked-accounts');
+    const tbody = document.querySelector('#table-locked tbody');
+    tbody.innerHTML = accounts.map(a => `
+        <tr>
+            <td><strong>${a.username}</strong></td>
+            <td><code>${a.source_ip || '—'}</code></td>
+            <td>${truncate(a.reason, 60)}</td>
+            <td>${formatTime(a.locked_at)}</td>
+            <td>
+                ${a.status === 'locked'
+                    ? `<button class="btn-sm btn-unlock" onclick="unlockAccount(${a.id})">🔓 Unlock</button>`
+                    : '<span class="badge badge-low">unlocked</span>'}
+            </td>
+        </tr>
+    `).join('');
+}
+
+async function unlockAccount(id) {
+    await fetch(`/api/locked-accounts/${id}`, { method: 'DELETE' });
+    loadLockedAccounts();
+}
+
+async function loadThreatIntel() {
+    const data = await fetchJSON('/api/threat-intel');
+    const stats = data.stats || {};
+    const el = document.getElementById('threat-intel-stats');
+    el.innerHTML = `
+        <div class="ti-stat"><span class="ti-num">${stats.total_indicators || 0}</span> Total Indicators</div>
+        <div class="ti-stat"><span class="ti-num ti-mal">${stats.by_reputation?.malicious || 0}</span> Malicious</div>
+        <div class="ti-stat"><span class="ti-num ti-sus">${stats.by_reputation?.suspicious || 0}</span> Suspicious</div>
+    `;
+}
+
+async function lookupThreatIP() {
+    const ip = document.getElementById('ti-lookup-ip').value.trim();
+    if (!ip) return;
+    lookupThreatIPDirect(ip);
+}
+
+async function lookupThreatIPDirect(ip) {
+    const data = await fetchJSON(`/api/threat-intel/lookup/${ip}`);
+    const el = document.getElementById('ti-lookup-result');
+    if (!data.found) {
+        el.innerHTML = `<div class="ti-result ti-clean">✅ <code>${ip}</code> — No threat data found (clean)</div>`;
+    } else {
+        const d = data.data;
+        el.innerHTML = `
+            <div class="ti-result ti-${d.reputation}">
+                <strong>${d.reputation.toUpperCase()}</strong> — <code>${ip}</code><br>
+                Source: ${d.source} | Tags: ${(d.tags || []).join(', ') || 'none'}
+            </div>
+        `;
+    }
 }
 
 async function loadLogs() {
@@ -280,8 +398,11 @@ async function loadLogs() {
 }
 
 async function blockIP(ip) {
-    // This is visual-only — actual blocking is handled by SOAR playbooks
     alert(`IP ${ip} is already being managed by SOAR automation.`);
+}
+
+async function exportReport(type, format) {
+    window.open(`/api/reports/${type}?format=${format}`, '_blank');
 }
 
 // ── Utilities ───────────────────────────────────────────────────────

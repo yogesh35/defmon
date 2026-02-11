@@ -7,7 +7,7 @@ and syslog CEF channels.
 import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from backend.core.models import BlockedIP, ResponseAction
+from backend.core.models import BlockedIP, LockedAccount, ResponseAction
 from backend.soar.notifications import send_notification
 
 
@@ -88,3 +88,34 @@ async def log_response_action(session: AsyncSession, action_type: str,
         incident_id=incident_id,
     ))
     await session.commit()
+
+
+async def lock_account(session: AsyncSession, username: str, source_ip: str,
+                       reason: str, alert_id: str = None) -> bool:
+    """Lock a compromised user account.
+
+    Returns True if newly locked, False if already locked.
+    """
+    existing = await session.execute(
+        select(LockedAccount).where(
+            LockedAccount.username == username,
+            LockedAccount.status == "locked",
+        )
+    )
+    if existing.scalar_one_or_none():
+        return False
+
+    session.add(LockedAccount(
+        username=username,
+        source_ip=source_ip,
+        reason=reason,
+        alert_id=alert_id,
+    ))
+    session.add(ResponseAction(
+        action_type="lock_account",
+        target=username,
+        detail=f"Locked account '{username}' — {reason}",
+        alert_id=alert_id,
+    ))
+    await session.commit()
+    return True

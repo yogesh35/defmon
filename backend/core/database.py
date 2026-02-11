@@ -14,7 +14,7 @@ class Base(DeclarativeBase):
 async def init_db():
     """Create all tables."""
     from backend.core.models import (  # noqa: F401
-        LogEntry, Alert, Incident, BlockedIP, ResponseAction,
+        User, LogEntry, Alert, Incident, BlockedIP, LockedAccount, ResponseAction,
     )
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)

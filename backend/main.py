@@ -1,4 +1,4 @@
-"""FastAPI application — wires together all components."""
+"""Defmon — FastAPI application entry point."""
 import asyncio
 import sys
 import os
@@ -12,15 +12,18 @@ from fastapi.responses import FileResponse
 
 from backend.core.database import init_db, async_session
 from backend.core.config import LOG_FILE, AUTH_LOG_FILE, APP_LOG_FILE
-from backend.core.models import LogEntry
+from backend.core.models import LogEntry, User
+from backend.core.auth import hash_password
 from backend.detection.engine import DetectionEngine
 from backend.soar.playbooks import execute_playbook
 from backend.collectors.log_collector import LogCollector
 from backend.api.routes import router, websocket_endpoint
 from backend.api.websocket import ws_manager
 from backend.utils.geoip import geoip_lookup
+from backend.utils.threat_intel import enrich_alert, init_threat_intel
 
-app = FastAPI(title="Mini SIEM + SOAR", version="1.0.0")
+app = FastAPI(title="Defmon", version="1.0.0",
+              description="Website Security Monitoring & Automated Response — SIEM + SOAR")
 app.include_router(router)
 
 # Globals
@@ -53,6 +56,11 @@ async def ws_live(ws: WebSocket):
 @app.on_event("startup")
 async def startup():
     await init_db()
+
+    # Initialize threat intelligence
+    count = init_threat_intel()
+    print(f"🛡️ Defmon — Loaded {count} threat intelligence indicators")
+
     # Seed blocked IPs from config
     from backend.core.config import SEED_BLACKLIST
     from backend.core.models import BlockedIP
@@ -63,6 +71,27 @@ async def startup():
             if not existing.scalar_one_or_none():
                 session.add(BlockedIP(ip=ip, reason="Seed blacklist", severity="critical"))
         await session.commit()
+
+    # Seed default admin and analyst users
+    async with async_session() as session:
+        existing = await session.execute(select(User).where(User.username == "admin"))
+        if not existing.scalar_one_or_none():
+            session.add(User(
+                username="admin",
+                password_hash=hash_password("admin123"),
+                role="admin",
+                full_name="Administrator",
+                email="admin@defmon.local",
+            ))
+            session.add(User(
+                username="analyst",
+                password_hash=hash_password("analyst123"),
+                role="analyst",
+                full_name="SOC Analyst",
+                email="analyst@defmon.local",
+            ))
+            await session.commit()
+            print("👤 Default users created: admin/admin123, analyst/analyst123")
 
     # Start log collector in background
     asyncio.create_task(_run_collector())
@@ -102,11 +131,14 @@ async def _run_collector():
         # 2. Run detection
         alerts = await detection_engine.analyze(parsed_log)
 
-        # 3. For each alert → SOAR playbook → broadcast
+        # 3. For each alert → enrich with threat intel → SOAR playbook → broadcast
         for alert_data in alerts:
             alert_data["country"] = geo["country"]
             alert_data["latitude"] = geo["latitude"]
             alert_data["longitude"] = geo["longitude"]
+
+            # Enrich with threat intelligence
+            enrich_alert(alert_data)
 
             async with async_session() as session:
                 result = await execute_playbook(session, alert_data, detection_engine)

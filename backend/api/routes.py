@@ -1,16 +1,82 @@
-"""FastAPI REST & WebSocket API routes."""
+"""Defmon — FastAPI REST & WebSocket API routes."""
+import csv
+import io
 from datetime import datetime
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Query, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, Query, WebSocket, WebSocketDisconnect, HTTPException
 from sqlalchemy import select, func, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.core.database import get_session
-from backend.core.models import Alert, Incident, LogEntry, BlockedIP, ResponseAction
+from backend.core.models import (
+    Alert, Incident, LogEntry, BlockedIP, LockedAccount, ResponseAction, User,
+)
+from backend.core.auth import (
+    get_current_user, require_admin, require_analyst,
+    hash_password, verify_password, create_token,
+)
 from backend.api.websocket import ws_manager
 
 router = APIRouter(prefix="/api")
+
+
+# ── Authentication ───────────────────────────────────────────────────────────
+@router.post("/auth/login")
+async def login(body: dict, session: AsyncSession = Depends(get_session)):
+    username = body.get("username", "")
+    password = body.get("password", "")
+    result = await session.execute(select(User).where(User.username == username))
+    user = result.scalar_one_or_none()
+    if not user or not verify_password(password, user.password_hash):
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+    if not user.is_active:
+        raise HTTPException(status_code=403, detail="Account is disabled")
+    user.last_login = datetime.utcnow()
+    await session.commit()
+    token = create_token(user.id, user.username, user.role)
+    return {
+        "token": token,
+        "user": {
+            "id": user.id, "username": user.username,
+            "role": user.role, "full_name": user.full_name,
+        },
+    }
+
+
+@router.get("/auth/me")
+async def get_me(user: dict = Depends(get_current_user)):
+    return user
+
+
+@router.post("/auth/users")
+async def create_user(body: dict, session: AsyncSession = Depends(get_session),
+                      admin: dict = Depends(require_admin)):
+    existing = await session.execute(select(User).where(User.username == body["username"]))
+    if existing.scalar_one_or_none():
+        raise HTTPException(status_code=400, detail="Username already exists")
+    user = User(
+        username=body["username"],
+        password_hash=hash_password(body["password"]),
+        role=body.get("role", "analyst"),
+        full_name=body.get("full_name", ""),
+        email=body.get("email", ""),
+    )
+    session.add(user)
+    await session.commit()
+    return {"id": user.id, "username": user.username, "role": user.role}
+
+
+@router.get("/auth/users")
+async def list_users(session: AsyncSession = Depends(get_session),
+                     admin: dict = Depends(require_admin)):
+    result = await session.execute(select(User).order_by(User.created_at))
+    return [
+        {"id": u.id, "username": u.username, "role": u.role,
+         "full_name": u.full_name, "is_active": u.is_active,
+         "last_login": str(u.last_login) if u.last_login else None}
+        for u in result.scalars().all()
+    ]
 
 
 # ── Alerts ───────────────────────────────────────────────────────────────────
@@ -276,6 +342,9 @@ async def get_stats(session: AsyncSession = Depends(get_session)):
         select(func.count(Incident.id)).where(Incident.status == "open")
     )).scalar() or 0
     total_blocked = (await session.execute(select(func.count(BlockedIP.id)))).scalar() or 0
+    total_locked = (await session.execute(
+        select(func.count(LockedAccount.id)).where(LockedAccount.status == "locked")
+    )).scalar() or 0
 
     # Alerts by severity
     sev_q = await session.execute(
@@ -330,12 +399,160 @@ async def get_stats(session: AsyncSession = Depends(get_session)):
         "total_incidents": total_incidents,
         "open_incidents": open_incidents,
         "total_blocked": total_blocked,
+        "total_locked_accounts": total_locked,
         "by_severity": by_severity,
         "by_rule": by_rule,
         "top_ips": top_ips,
         "recent_alerts": recent_alerts,
         "geo_points": geo_points,
         "timeline": timeline,
+    }
+
+
+# ── Locked Accounts ──────────────────────────────────────────────────────────
+@router.get("/locked-accounts")
+async def list_locked_accounts(session: AsyncSession = Depends(get_session)):
+    result = await session.execute(
+        select(LockedAccount).order_by(desc(LockedAccount.locked_at))
+    )
+    return [
+        {"id": la.id, "username": la.username, "source_ip": la.source_ip,
+         "reason": la.reason, "locked_at": str(la.locked_at),
+         "alert_id": la.alert_id, "status": la.status}
+        for la in result.scalars().all()
+    ]
+
+
+@router.delete("/locked-accounts/{account_id}")
+async def unlock_account(account_id: int, session: AsyncSession = Depends(get_session)):
+    result = await session.execute(
+        select(LockedAccount).where(LockedAccount.id == account_id)
+    )
+    entry = result.scalar_one_or_none()
+    if not entry:
+        return {"error": "not found"}
+    entry.status = "unlocked"
+    await session.commit()
+    return {"status": "unlocked", "username": entry.username}
+
+
+# ── Threat Intelligence ──────────────────────────────────────────────────────
+@router.get("/threat-intel")
+async def get_threat_intel():
+    from backend.utils.threat_intel import get_all_indicators, get_threat_stats
+    return {
+        "stats": get_threat_stats(),
+        "indicators": get_all_indicators(),
+    }
+
+
+@router.get("/threat-intel/lookup/{ip}")
+async def lookup_threat_ip(ip: str):
+    from backend.utils.threat_intel import lookup_ip
+    result = lookup_ip(ip)
+    if not result:
+        return {"ip": ip, "found": False, "data": None}
+    return {"ip": ip, "found": True, "data": result}
+
+
+@router.post("/threat-intel/indicators")
+async def add_indicator(body: dict):
+    from backend.utils.threat_intel import add_threat_indicator
+    entry = add_threat_indicator(
+        ip=body["ip"],
+        reputation=body.get("reputation", "malicious"),
+        source=body.get("source", "manual"),
+        tags=body.get("tags", []),
+    )
+    return {"status": "added", "ip": body["ip"], "data": entry}
+
+
+# ── Reporting & Export ───────────────────────────────────────────────────────
+@router.get("/reports/alerts")
+async def export_alerts_report(
+    format: str = Query("json", regex="^(json|csv)$"),
+    severity: Optional[str] = None,
+    limit: int = Query(500, le=5000),
+    session: AsyncSession = Depends(get_session),
+):
+    """Export alerts as JSON or CSV for reporting."""
+    q = select(Alert).order_by(desc(Alert.timestamp))
+    if severity:
+        q = q.where(Alert.severity == severity)
+    q = q.limit(limit)
+    result = await session.execute(q)
+    alerts = [_alert_dict(a) for a in result.scalars().all()]
+
+    if format == "csv":
+        return _to_csv_response(alerts, "alerts_report.csv")
+    return {"report": "alerts", "generated_at": str(datetime.utcnow()), "count": len(alerts), "data": alerts}
+
+
+@router.get("/reports/incidents")
+async def export_incidents_report(
+    format: str = Query("json", regex="^(json|csv)$"),
+    status: Optional[str] = None,
+    limit: int = Query(500, le=5000),
+    session: AsyncSession = Depends(get_session),
+):
+    """Export incidents as JSON or CSV for reporting."""
+    q = select(Incident).order_by(desc(Incident.created_at))
+    if status:
+        q = q.where(Incident.status == status)
+    q = q.limit(limit)
+    result = await session.execute(q)
+    incidents = [_incident_dict(i) for i in result.scalars().all()]
+
+    if format == "csv":
+        return _to_csv_response(incidents, "incidents_report.csv")
+    return {"report": "incidents", "generated_at": str(datetime.utcnow()), "count": len(incidents), "data": incidents}
+
+
+@router.get("/reports/summary")
+async def get_summary_report(session: AsyncSession = Depends(get_session)):
+    """Generate a comprehensive security summary report."""
+    from backend.utils.threat_intel import get_threat_stats
+
+    total_alerts = (await session.execute(select(func.count(Alert.id)))).scalar() or 0
+    total_incidents = (await session.execute(select(func.count(Incident.id)))).scalar() or 0
+    total_blocked = (await session.execute(select(func.count(BlockedIP.id)))).scalar() or 0
+    total_locked = (await session.execute(
+        select(func.count(LockedAccount.id)).where(LockedAccount.status == "locked")
+    )).scalar() or 0
+    total_actions = (await session.execute(select(func.count(ResponseAction.id)))).scalar() or 0
+
+    sev_q = await session.execute(
+        select(Alert.severity, func.count(Alert.id)).group_by(Alert.severity)
+    )
+    by_severity = {row[0]: row[1] for row in sev_q.all()}
+
+    rule_q = await session.execute(
+        select(Alert.rule_id, Alert.rule_name, func.count(Alert.id))
+        .group_by(Alert.rule_id, Alert.rule_name)
+        .order_by(desc(func.count(Alert.id))).limit(10)
+    )
+    top_rules = [{"rule_id": r[0], "rule_name": r[1], "count": r[2]} for r in rule_q.all()]
+
+    ip_q = await session.execute(
+        select(Alert.source_ip, func.count(Alert.id)).group_by(Alert.source_ip)
+        .order_by(desc(func.count(Alert.id))).limit(10)
+    )
+    top_attackers = [{"ip": r[0], "alert_count": r[1]} for r in ip_q.all()]
+
+    return {
+        "report": "security_summary",
+        "generated_at": str(datetime.utcnow()),
+        "overview": {
+            "total_alerts": total_alerts,
+            "total_incidents": total_incidents,
+            "blocked_ips": total_blocked,
+            "locked_accounts": total_locked,
+            "response_actions": total_actions,
+        },
+        "alerts_by_severity": by_severity,
+        "top_attack_types": top_rules,
+        "top_attackers": top_attackers,
+        "threat_intelligence": get_threat_stats(),
     }
 
 
@@ -394,3 +611,19 @@ def _bucket_timestamps(timestamps: list, buckets: int = 30) -> list[dict]:
         counts[key] += 1
     sorted_keys = sorted(counts.keys())[-buckets:]
     return [{"time": k, "count": counts[k]} for k in sorted_keys]
+
+
+def _to_csv_response(data: list[dict], filename: str):
+    """Convert a list of dicts to a CSV download response."""
+    from fastapi.responses import StreamingResponse
+    if not data:
+        return StreamingResponse(io.StringIO(""), media_type="text/csv")
+    output = io.StringIO()
+    writer = csv.DictWriter(output, fieldnames=data[0].keys())
+    writer.writeheader()
+    writer.writerows(data)
+    output.seek(0)
+    return StreamingResponse(
+        output, media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )

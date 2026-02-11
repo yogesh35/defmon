@@ -12,6 +12,7 @@ from backend.soar.actions import (
     add_to_blacklist_db,
     send_alert_notification,
     log_response_action,
+    lock_account,
 )
 
 
@@ -20,13 +21,13 @@ from backend.soar.actions import (
 PLAYBOOKS = {
     "critical": {
         "name": "Critical Threat Response",
-        "steps": ["notify", "block_ip", "blacklist", "create_incident"],
-        "description": "Immediate block + blacklist + incident ticket for critical threats",
+        "steps": ["notify", "block_ip", "blacklist", "lock_account", "create_incident"],
+        "description": "Immediate block + blacklist + lock accounts + incident ticket for critical threats",
     },
     "high": {
         "name": "High Threat Response",
-        "steps": ["notify", "block_ip", "create_incident"],
-        "description": "Block IP and create incident for high-severity threats",
+        "steps": ["notify", "block_ip", "lock_account", "create_incident"],
+        "description": "Block IP, lock compromised accounts, and create incident for high-severity threats",
     },
     "medium": {
         "name": "Medium Threat Response",
@@ -110,6 +111,21 @@ async def execute_playbook(session: AsyncSession, alert_data: dict,
             )
             actions_taken.append("incident_created")
 
+        elif step == "lock_account":
+            # Lock accounts targeted by brute-force or credential attacks
+            if alert_data.get("rule_id") in ("brute_force", "sql_injection"):
+                target_user = _extract_target_user(alert_data)
+                if target_user:
+                    locked = await lock_account(
+                        session, target_user, alert_data["source_ip"],
+                        reason=alert_data["description"],
+                        alert_id=alert.id,
+                    )
+                    if locked:
+                        actions_taken.append("account_locked")
+                    else:
+                        actions_taken.append("account_already_locked")
+
     await session.commit()
 
     return {
@@ -121,3 +137,21 @@ async def execute_playbook(session: AsyncSession, alert_data: dict,
         "source_ip": alert_data["source_ip"],
         "rule_name": alert_data["rule_name"],
     }
+
+
+def _extract_target_user(alert_data: dict) -> str | None:
+    """Extract the targeted username from alert evidence/description."""
+    evidence = alert_data.get("evidence", "")
+    # Try to extract username from auth log evidence
+    import re
+    m = re.search(r"for (\w+) from", evidence)
+    if m:
+        return m.group(1)
+    # Try common patterns
+    m = re.search(r"username[=:](\w+)", evidence)
+    if m:
+        return m.group(1)
+    # Default for brute force alerts
+    if alert_data.get("rule_id") == "brute_force":
+        return "admin"
+    return None

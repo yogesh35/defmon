@@ -2,4 +2,5 @@ __pycache__/
 *.pyc
 data/db/
 data/logs/
+data/threat_intel/
 *.db

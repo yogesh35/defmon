@@ -1,57 +1,85 @@
-# Mini SIEM + SOAR Platform
+# Defmon — Website Security Monitoring & Automated Response
 
-A production-style Security Information & Event Management (SIEM) + Security Orchestration, Automation & Response (SOAR) platform.
+A real-time website security monitoring and automated response framework integrating **SIEM** (Security Information and Event Management) and **SOAR** (Security Orchestration, Automation, and Response) for web application defense.
 
 ## Architecture
 
 ```
 ┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
-│  Log Sources     │───▶│  Log Collector   │───▶│  Normalizer     │
-│  (Simulator)     │    │  (File Watcher)  │    │  (Parser)       │
+│  Web Server Logs │───▶│  Log Collector   │───▶│  Normalizer     │
+│  (Apache/Nginx)  │    │  (File Watcher)  │    │  (Parser)       │
 └─────────────────┘    └──────────────────┘    └────────┬────────┘
                                                          │
-                                                         ▼
-┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
-│  SOAR Engine     │◀───│  Detection       │◀───│  Event Store    │
-│  (Playbooks)     │    │  Engine (Rules)  │    │  (SQLite)       │
-└────────┬────────┘    └──────────────────┘    └─────────────────┘
-         │                                              │
-         ▼                                              ▼
+                       ┌──────────────────┐              ▼
+                       │ Threat Intel Feed│     ┌─────────────────┐
+                       │ (IP Reputation)  │────▶│  Event Store    │
+                       └──────────────────┘     │  (SQLite)       │
+                                                └────────┬────────┘
+                                                         │
+┌─────────────────┐    ┌──────────────────┐              ▼
+│  SOAR Engine     │◀───│  Detection       │◀────────────┘
+│  (Playbooks)     │    │  Engine (Rules)  │
+└────────┬────────┘    └──────────────────┘
+         │
+         ▼
 ┌─────────────────┐                           ┌─────────────────┐
-│  Response Actions│                           │  SOC Dashboard  │
-│  - Block IP      │                           │  (Web UI)       │
-│  - Blacklist     │                           │  - Live Feed    │
-│  - Alert/Notify  │                           │  - Charts/Graphs│
-│  - Ticket        │                           │  - Geo Map      │
-└─────────────────┘                           └─────────────────┘
+│ Response Actions │                           │  SOC Dashboard  │
+│ - Block IP       │                           │  (Web UI)       │
+│ - Lock Account   │                           │  - Login/Auth   │
+│ - Blacklist      │                           │  - Live Feed    │
+│ - Alert/Notify   │                           │  - Charts/Graphs│
+│ - Create Ticket  │                           │  - Geo Map      │
+└─────────────────┘                           │  - Reports      │
+                                              └─────────────────┘
 ```
 
 ## Features
 
-### SIEM
-- Real-time log parsing & normalization (Apache/Nginx/Auth)
+### SIEM — Detection Engine
+- Real-time log parsing & normalization (Apache/Nginx/Auth/App)
 - Rule-based + threshold-based + behavioral detection
-- 8+ attack detection rules (SQLi, XSS, brute force, dir traversal, etc.)
-- MITRE ATT&CK mapping
-- Risk scoring
+- 8 attack detection rules with MITRE ATT&CK mapping
+- Risk scoring and alert deduplication
 
-### SOAR
+### SOAR — Automated Response
 - Automated IP blocking (firewall simulation)
+- **Compromised account locking**
 - Dynamic blacklist management
 - Incident ticket generation
-- Alert notifications (Slack/email simulation)
-- Response playbooks with severity levels
+- Alert notifications (console, log, Slack, email, syslog CEF)
+- Response playbooks with severity-based automation
 - Full response audit trail
 
+### Threat Intelligence
+- IP reputation database with malicious/suspicious classification
+- Threat indicator tags (scanner, bruteforce, tor_exit, botnet, etc.)
+- Alert enrichment with threat context
+- Manual indicator management via API
+
+### User Authentication & Access Control
+- JWT-based authentication
+- Role-based access: **Admin** and **Analyst**
+- Login page with session management
+- User management API (admin only)
+
 ### SOC Dashboard
+- **Login page** with role-based access
 - Live attack feed (WebSocket)
-- Alert list with severity color-coding
-- Top attacking IPs
-- Geo-location map (Leaflet.js)
+- Alert list with severity color-coding and CSV export
+- Top attacking IPs with threat intelligence lookup
+- Geo-location attack map (Leaflet.js)
 - Attack type distribution (Chart.js)
-- Timeline graphs
-- Response actions log
-- Search & filter
+- Timeline graphs and severity breakdown
+- SOAR response actions log
+- **Locked accounts** management panel
+- **Threat intelligence** panel with IP lookup
+- Incident management with CSV export
+- Log search & filter
+
+### Reporting
+- Alerts export (JSON/CSV)
+- Incidents export (JSON/CSV)
+- Security summary report with threat intelligence stats
 
 ## Quick Start
 
@@ -70,15 +98,30 @@ python -m simulator.generate_logs
 # Open http://localhost:8000 in browser
 ```
 
+### Default Credentials
+| Username | Password | Role |
+|----------|----------|------|
+| admin | admin123 | Admin |
+| analyst | analyst123 | Analyst |
+
 ## Simulating Attacks
 ```bash
 python -m simulator.generate_logs
-# Or with options:
+# With options:
 python -m simulator.generate_logs --rate fast --duration 300
 ```
 
 ## API Endpoints
 
+### Authentication
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/auth/login` | Login and get JWT token |
+| GET | `/api/auth/me` | Get current user info |
+| POST | `/api/auth/users` | Create user (admin only) |
+| GET | `/api/auth/users` | List users (admin only) |
+
+### Alerts & Incidents
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | GET | `/api/alerts` | List alerts with filters |
@@ -89,9 +132,33 @@ python -m simulator.generate_logs --rate fast --duration 300
 | PATCH | `/api/incidents/{id}` | Update incident |
 | GET | `/api/logs` | Search/filter logs |
 | GET | `/api/stats` | Dashboard statistics |
+
+### SOAR & Response
+| Method | Endpoint | Description |
+|--------|----------|-------------|
 | GET | `/api/blocked-ips` | List blocked IPs |
 | DELETE | `/api/blocked-ips/{ip}` | Unblock IP |
+| GET | `/api/locked-accounts` | List locked accounts |
+| DELETE | `/api/locked-accounts/{id}` | Unlock account |
 | GET | `/api/response-actions` | Response action history |
+
+### Threat Intelligence
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/threat-intel` | Get all threat indicators & stats |
+| GET | `/api/threat-intel/lookup/{ip}` | Look up IP reputation |
+| POST | `/api/threat-intel/indicators` | Add threat indicator |
+
+### Reporting
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/reports/alerts?format=csv` | Export alerts report |
+| GET | `/api/reports/incidents?format=csv` | Export incidents report |
+| GET | `/api/reports/summary` | Security summary report |
+
+### Live Feed
+| Method | Endpoint | Description |
+|--------|----------|-------------|
 | WS | `/ws/live-feed` | Live attack/alert feed |
 
 ## Detection Rules
@@ -107,15 +174,25 @@ python -m simulator.generate_logs --rate fast --duration 300
 | Suspicious User Agent | T1071 | Low |
 | Blacklisted IP | — | Critical |
 
+## SOAR Response Playbooks
+
+| Severity | Actions |
+|----------|---------|
+| **Critical** | Notify → Block IP → Blacklist → Lock Account → Create Incident |
+| **High** | Notify → Block IP → Lock Account → Create Incident |
+| **Medium** | Notify → Create Incident |
+| **Low** | Notify |
+
 ## Folder Structure
 ```
-mini-siem-soar/
+defmon/
 ├── backend/
 │   ├── main.py              # FastAPI app entry
 │   ├── core/
+│   │   ├── auth.py          # JWT authentication & RBAC
 │   │   ├── config.py        # Configuration
 │   │   ├── database.py      # DB setup & models
-│   │   └── models.py        # SQLAlchemy models
+│   │   └── models.py        # SQLAlchemy models (7 tables)
 │   ├── api/
 │   │   ├── routes.py        # API endpoints
 │   │   └── websocket.py     # WebSocket live feed
@@ -124,22 +201,25 @@ mini-siem-soar/
 │   │   └── rules.py         # Detection rules
 │   ├── soar/
 │   │   ├── playbooks.py     # Response playbooks
-│   │   └── actions.py       # Response actions
+│   │   ├── actions.py       # Response actions (block, lock, notify)
+│   │   └── notifications.py # Multi-channel notifications
 │   ├── collectors/
 │   │   └── log_collector.py # Log ingestion
 │   └── utils/
 │       ├── parser.py        # Log parser/normalizer
-│       └── geoip.py         # GeoIP lookup
+│       ├── geoip.py         # GeoIP lookup
+│       └── threat_intel.py  # Threat intelligence feed
 ├── frontend/
 │   └── static/
-│       ├── index.html        # SOC Dashboard
+│       ├── index.html       # Login + SOC Dashboard
 │       ├── css/dashboard.css
 │       └── js/dashboard.js
 ├── simulator/
 │   └── generate_logs.py     # Attack log simulator
 ├── data/
 │   ├── logs/                # Log files
-│   └── db/                  # SQLite database
+│   ├── db/                  # SQLite database
+│   └── threat_intel/        # Threat feed data
 ├── docker/
 │   └── Dockerfile
 ├── docker-compose.yml
@@ -148,7 +228,8 @@ mini-siem-soar/
 ```
 
 ## Tech Stack
-- **Backend**: Python 3.11+ / FastAPI / SQLAlchemy
+- **Backend**: Python 3.11+ / FastAPI / SQLAlchemy / JWT
 - **Frontend**: HTML5 / CSS3 / JavaScript / Chart.js / Leaflet.js
 - **Database**: SQLite (swappable to PostgreSQL)
+- **Authentication**: JWT + bcrypt password hashing
 - **Containerization**: Docker + Docker Compose

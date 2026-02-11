@@ -1,4 +1,4 @@
-/* ── Mini SIEM + SOAR — SOC Dashboard ─────────────────────────────── */
+/* ── Defmon — SOC Dashboard ────────────────────────────────────────── */
 :root {
     --bg:         #0a0e17;
     --surface:    #111827;
@@ -80,7 +80,7 @@ header h1 { font-size: 20px; font-weight: 700; }
 }
 
 /* Full-width cards */
-.card-alerts, .card-actions, .card-incidents, .card-logs {
+.card-alerts, .card-actions, .card-incidents, .card-logs, .card-locked, .card-threat-intel {
     grid-column: 1 / -1;
 }
 
@@ -156,3 +156,104 @@ footer {
     .kpi-row { gap: 8px; }
     .kpi-card { min-width: 120px; }
 }
+
+/* ── Login Page ────────────────────────────────────────────────────── */
+.login-page {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    background: linear-gradient(135deg, #0a0e17 0%, #1a2332 50%, #0a0e17 100%);
+}
+.login-box {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 40px;
+    width: 380px;
+    text-align: center;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+}
+.login-logo { font-size: 56px; margin-bottom: 8px; }
+.login-box h1 { font-size: 28px; font-weight: 800; margin-bottom: 4px; }
+.login-subtitle { color: var(--text-dim); font-size: 13px; margin-bottom: 28px; }
+.login-box input {
+    width: 100%;
+    padding: 12px 14px;
+    margin-bottom: 12px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    font-size: 14px;
+}
+.login-box input:focus { outline: none; border-color: var(--accent); }
+.login-box button {
+    width: 100%;
+    padding: 12px;
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    margin-top: 4px;
+}
+.login-box button:hover { opacity: 0.9; }
+.login-box button:disabled { opacity: 0.5; cursor: not-allowed; }
+.login-error { color: var(--critical); font-size: 13px; margin-top: 10px; min-height: 18px; }
+.login-hint { color: var(--text-dim); font-size: 11px; margin-top: 20px; }
+
+/* ── User Info & Logout ────────────────────────────────────────────── */
+.user-info {
+    font-size: 13px;
+    color: var(--text-dim);
+    background: var(--card);
+    padding: 4px 10px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+}
+.btn-logout {
+    background: transparent;
+    color: var(--text-dim);
+    border: 1px solid var(--border);
+    padding: 4px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 12px;
+}
+.btn-logout:hover { color: var(--critical); border-color: var(--critical); }
+
+/* ── Locked accounts KPI ──────────────────────────────────────────── */
+.kpi-card.kpi-locked { border-top-color: #8b5cf6; }
+
+/* ── Export button ────────────────────────────────────────────────── */
+.btn-export {
+    background: #1e293b !important;
+    border: 1px solid var(--border) !important;
+    color: var(--text-dim) !important;
+}
+.btn-export:hover { color: var(--text) !important; }
+
+/* ── Unlock button ────────────────────────────────────────────────── */
+.btn-unlock { background: var(--low); color: #000; }
+.btn-ti { background: var(--info); color: #fff; }
+
+/* ── Threat Intelligence ──────────────────────────────────────────── */
+.threat-stats { display: flex; gap: 20px; margin-bottom: 12px; flex-wrap: wrap; }
+.ti-stat { font-size: 13px; color: var(--text-dim); }
+.ti-num { font-size: 22px; font-weight: 700; color: var(--text); margin-right: 6px; }
+.ti-num.ti-mal { color: var(--critical); }
+.ti-num.ti-sus { color: var(--medium); }
+.ti-result {
+    padding: 10px 14px; border-radius: 8px; margin-top: 8px; font-size: 13px;
+}
+.ti-result.ti-malicious { background: rgba(239,68,68,0.15); border: 1px solid var(--critical); }
+.ti-result.ti-suspicious { background: rgba(234,179,8,0.15); border: 1px solid var(--medium); }
+.ti-result.ti-clean { background: rgba(34,197,94,0.15); border: 1px solid var(--low); }
+
+/* ── Badge for lock_account ───────────────────────────────────────── */
+.badge-lock_account { background: #8b5cf6; color: #fff; }
+.badge-notify { background: var(--info); color: #fff; }
+.badge-block_ip { background: var(--critical); color: #fff; }

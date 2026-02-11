@@ -151,7 +151,7 @@ def notify_slack(alert_data: dict, context: dict = None) -> str:
 
     payload = {
         "channel": "#soc-alerts",
-        "username": "SIEM-Bot",
+        "username": "Defmon-Bot",
         "icon_emoji": ":shield:",
         "blocks": blocks,
     }
@@ -211,7 +211,7 @@ def notify_email(alert_data: dict, context: dict = None) -> str:
         f"Incident ID:   {incident_text}\n"
         f"\n"
         f"{'='*60}\n"
-        f"  This is an automated alert from Mini SIEM+SOAR\n"
+        f"  This is an automated alert from Defmon SIEM+SOAR\n"
         f"{'='*60}\n"
         f"\n"
     )
@@ -240,7 +240,7 @@ def notify_syslog_cef(alert_data: dict, context: dict = None) -> str:
     )
 
     line = (
-        f"CEF:0|MiniSIEM|SOAR|1.0|{alert_data.get('rule_id', '?')}|"
+        f"CEF:0|Defmon|SOAR|1.0|{alert_data.get('rule_id', '?')}|"
         f"{alert_data.get('rule_name', '?')}|{cef_sev}|{extensions}"
     )
 

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SOC Dashboard — Mini SIEM + SOAR</title>
+    <title>Defmon — Security Monitoring Dashboard</title>
     <link rel="stylesheet" href="/static/css/dashboard.css">
     <!-- Chart.js -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
@@ -12,16 +12,38 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 </head>
 <body>
+
+    <!-- ── Login Page ─────────────────────────────────────────────────── -->
+    <div id="login-page" class="login-page">
+        <div class="login-box">
+            <div class="login-logo">🛡️</div>
+            <h1>Defmon</h1>
+            <p class="login-subtitle">Security Monitoring & Automated Response</p>
+            <form id="login-form" onsubmit="handleLogin(event)">
+                <input type="text" id="login-user" placeholder="Username" required autocomplete="username" />
+                <input type="password" id="login-pass" placeholder="Password" required autocomplete="current-password" />
+                <button type="submit" id="login-btn">Sign In</button>
+                <div id="login-error" class="login-error"></div>
+            </form>
+            <div class="login-hint">Default: admin / admin123 or analyst / analyst123</div>
+        </div>
+    </div>
+
+    <!-- ── Dashboard (hidden until login) ─────────────────────────────── -->
+    <div id="dashboard-page" style="display:none;">
+
     <!-- ── Header ──────────────────────────────────────────────────────── -->
     <header>
         <div class="header-left">
             <span class="logo">🛡️</span>
-            <h1>Mini SIEM + SOAR</h1>
+            <h1>Defmon</h1>
             <span class="subtitle">Security Operations Center</span>
         </div>
         <div class="header-right">
+            <span id="user-info" class="user-info"></span>
             <span id="ws-status" class="ws-dot disconnected" title="WebSocket"></span>
             <span id="clock"></span>
+            <button class="btn-logout" onclick="handleLogout()">Logout</button>
         </div>
     </header>
 
@@ -46,6 +68,10 @@
         <div class="kpi-card kpi-dark">
             <div class="kpi-value" id="kpi-blocked">0</div>
             <div class="kpi-label">Blocked IPs</div>
+        </div>
+        <div class="kpi-card kpi-locked">
+            <div class="kpi-value" id="kpi-locked">0</div>
+            <div class="kpi-label">Locked Accounts</div>
         </div>
     </section>
 
@@ -86,7 +112,7 @@
         <section class="card card-ips">
             <h2>🏴‍☠️ Top Attacking IPs</h2>
             <table id="table-ips">
-                <thead><tr><th>IP</th><th>Alerts</th><th>Action</th></tr></thead>
+                <thead><tr><th>IP</th><th>Alerts</th><th>Threat Intel</th><th>Action</th></tr></thead>
                 <tbody></tbody>
             </table>
         </section>
@@ -104,6 +130,7 @@
                 </select>
                 <input type="text" id="filter-ip" placeholder="Filter by IP…" />
                 <button onclick="loadAlerts()">🔍 Search</button>
+                <button onclick="exportReport('alerts', 'csv')" class="btn-export">📥 Export CSV</button>
             </div>
             <table id="table-alerts">
                 <thead>
@@ -128,6 +155,9 @@
         <!-- Incidents -->
         <section class="card card-incidents">
             <h2>📋 Incidents</h2>
+            <div class="filter-bar">
+                <button onclick="exportReport('incidents', 'csv')" class="btn-export">📥 Export CSV</button>
+            </div>
             <table id="table-incidents">
                 <thead>
                     <tr>
@@ -137,6 +167,26 @@
                 </thead>
                 <tbody></tbody>
             </table>
+        </section>
+
+        <!-- Locked Accounts -->
+        <section class="card card-locked">
+            <h2>🔒 Locked Accounts</h2>
+            <table id="table-locked">
+                <thead><tr><th>Username</th><th>Source IP</th><th>Reason</th><th>Locked At</th><th>Action</th></tr></thead>
+                <tbody></tbody>
+            </table>
+        </section>
+
+        <!-- Threat Intelligence -->
+        <section class="card card-threat-intel">
+            <h2>🕵️ Threat Intelligence</h2>
+            <div id="threat-intel-stats" class="threat-stats"></div>
+            <div class="filter-bar">
+                <input type="text" id="ti-lookup-ip" placeholder="Look up IP…" />
+                <button onclick="lookupThreatIP()">🔍 Lookup</button>
+            </div>
+            <div id="ti-lookup-result"></div>
         </section>
 
         <!-- Log Search -->
@@ -164,8 +214,10 @@
     </main>
 
     <footer>
-        <p>Mini SIEM + SOAR Platform • Cybersecurity Engineering Project • <span id="footer-year"></span></p>
+        <p>Defmon — Website Security Monitoring & Automated Response • SIEM + SOAR Platform • <span id="footer-year"></span></p>
     </footer>
+
+    </div> <!-- end dashboard-page -->
 
     <script src="/static/js/dashboard.js"></script>
 </body>

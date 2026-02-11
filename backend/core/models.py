@@ -2,10 +2,12 @@
 
 Tables
 ------
+users            – platform users with role-based access
 log_entries      – every normalized log event
 alerts           – detection-engine findings
 incidents        – case-management tickets
 blocked_ips      – IPs currently blocked
+locked_accounts  – compromised accounts locked by SOAR
 response_actions – audit trail of SOAR actions
 """
 import datetime, uuid
@@ -22,6 +24,21 @@ def _uuid():
 
 def _now():
     return datetime.datetime.utcnow()
+
+
+# ── User ─────────────────────────────────────────────────────────────────────
+class User(Base):
+    __tablename__ = "users"
+
+    id            = Column(String(36), primary_key=True, default=_uuid)
+    username      = Column(String(50), unique=True, nullable=False, index=True)
+    password_hash = Column(String(255), nullable=False)
+    role          = Column(String(20), default="analyst")  # admin / analyst
+    full_name     = Column(String(120), nullable=True)
+    email         = Column(String(120), nullable=True)
+    is_active     = Column(Integer, default=1)
+    created_at    = Column(DateTime, default=_now)
+    last_login    = Column(DateTime, nullable=True)
 
 
 # ── Log Entry ────────────────────────────────────────────────────────────────
@@ -112,9 +129,22 @@ class ResponseAction(Base):
 
     id            = Column(Integer, primary_key=True, autoincrement=True)
     timestamp     = Column(DateTime, default=_now, index=True)
-    action_type   = Column(String(40))                         # block_ip / blacklist / alert / ticket
+    action_type   = Column(String(40))                         # block_ip / blacklist / alert / ticket / lock_account
     target        = Column(String(120))                        # IP, email, etc.
     detail        = Column(Text)
     alert_id      = Column(String(36), nullable=True)
     incident_id   = Column(String(36), nullable=True)
     status        = Column(String(20), default="completed")
+
+
+# ── Locked Account ───────────────────────────────────────────────────────────
+class LockedAccount(Base):
+    __tablename__ = "locked_accounts"
+
+    id            = Column(Integer, primary_key=True, autoincrement=True)
+    username      = Column(String(100), index=True)
+    source_ip     = Column(String(45), nullable=True)
+    reason        = Column(Text)
+    locked_at     = Column(DateTime, default=_now)
+    alert_id      = Column(String(36), nullable=True)
+    status        = Column(String(20), default="locked")  # locked / unlocked

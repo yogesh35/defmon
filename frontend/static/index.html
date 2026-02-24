@@ -220,5 +220,38 @@
     </div> <!-- end dashboard-page -->
 
     <script src="/static/js/dashboard.js"></script>
+
+    <!-- ── Log Detail Modal ───────────────────────────────────────────── -->
+    <div id="log-modal" class="modal-overlay" onclick="closeModal('log-modal')">
+        <div class="modal-box" onclick="event.stopPropagation()">
+            <div class="modal-header">
+                <h3>📋 Log Entry Detail</h3>
+                <button class="modal-close" onclick="closeModal('log-modal')">✕</button>
+            </div>
+            <div id="log-modal-body" class="modal-body"></div>
+        </div>
+    </div>
+
+    <!-- ── Alert Detail Modal ─────────────────────────────────────────── -->
+    <div id="alert-modal" class="modal-overlay" onclick="closeModal('alert-modal')">
+        <div class="modal-box" onclick="event.stopPropagation()">
+            <div class="modal-header">
+                <h3>🚨 Alert Detail</h3>
+                <button class="modal-close" onclick="closeModal('alert-modal')">✕</button>
+            </div>
+            <div id="alert-modal-body" class="modal-body"></div>
+        </div>
+    </div>
+
+    <!-- ── Incident Detail Modal ──────────────────────────────────────── -->
+    <div id="incident-modal" class="modal-overlay" onclick="closeModal('incident-modal')">
+        <div class="modal-box" onclick="event.stopPropagation()">
+            <div class="modal-header">
+                <h3>📁 Incident Detail</h3>
+                <button class="modal-close" onclick="closeModal('incident-modal')">✕</button>
+            </div>
+            <div id="incident-modal-body" class="modal-body"></div>
+        </div>
+    </div>
 </body>
 </html>

@@ -257,7 +257,7 @@ function updateCharts(stats) {
 function renderAlerts(alerts) {
     const tbody = document.querySelector('#table-alerts tbody');
     tbody.innerHTML = alerts.map(a => `
-        <tr>
+        <tr class="clickable" onclick="openAlertDetail('${a.id}')">
             <td>${formatTime(a.timestamp)}</td>
             <td><span class="badge badge-${a.severity}">${a.severity}</span></td>
             <td>${a.rule_name}</td>
@@ -295,7 +295,7 @@ async function loadIncidents() {
     const incidents = await fetchJSON('/api/incidents?limit=20');
     const tbody = document.querySelector('#table-incidents tbody');
     tbody.innerHTML = incidents.map(i => `
-        <tr>
+        <tr class="clickable" onclick="openIncidentDetail('${i.id}')">
             <td><code>${i.id.substring(0,8)}…</code></td>
             <td>${formatTime(i.created_at)}</td>
             <td><span class="badge badge-${i.severity}">${i.severity}</span></td>
@@ -386,7 +386,7 @@ async function loadLogs() {
     const logs = await fetchJSON(u);
     const tbody = document.querySelector('#table-logs tbody');
     tbody.innerHTML = logs.map(l => `
-        <tr>
+        <tr class="clickable" onclick="openLogDetail(${l.id})">
             <td>${formatTime(l.timestamp)}</td>
             <td><code>${l.source_ip}</code></td>
             <td>${l.method}</td>
@@ -426,4 +426,114 @@ function truncate(s, len) {
 function escapeHtml(s) {
     if (!s) return '';
     return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── Detail Modals ───────────────────────────────────────────────
+function openModal(id) {
+    document.getElementById(id).classList.add('open');
+    document.addEventListener('keydown', _escClose);
+}
+function closeModal(id) {
+    document.getElementById(id).classList.remove('open');
+    document.removeEventListener('keydown', _escClose);
+}
+function _escClose(e) {
+    if (e.key === 'Escape') {
+        ['log-modal','alert-modal','incident-modal'].forEach(closeModal);
+    }
+}
+
+function detailRow(key, val) {
+    const empty = (val === null || val === undefined || val === '');
+    return `
+        <div class="detail-key">${key}</div>
+        <div class="detail-val${empty ? ' detail-empty' : ''}">${empty ? 'none' : escapeHtml(String(val))}</div>
+    `;
+}
+function detailSection(title) {
+    return `<div class="detail-section-title">${title}</div>`;
+}
+
+async function openLogDetail(id) {
+    const log = await fetchJSON(`/api/logs/${id}`);
+    const statusColor = log.status_code >= 500 ? 'var(--critical)' : log.status_code >= 400 ? 'var(--medium)' : 'var(--low)';
+    document.getElementById('log-modal-body').innerHTML = `
+        <div class="detail-grid">
+            ${detailSection('Request')}
+            ${detailRow('ID', log.id)}
+            ${detailRow('Timestamp', log.timestamp)}
+            ${detailRow('Log Source', log.log_source)}
+            ${detailRow('Method', log.method)}
+            ${detailRow('URL', log.url)}
+            ${detailRow('Status Code', log.status_code)}
+            ${detailRow('POST Body', log.body)}
+            ${detailSection('Client')}
+            ${detailRow('Source IP', log.source_ip)}
+            ${detailRow('User Agent', log.user_agent)}
+            ${detailRow('Country', log.country)}
+            ${detailRow('City', log.city)}
+            ${detailRow('Latitude', log.latitude)}
+            ${detailRow('Longitude', log.longitude)}
+            ${detailSection('Raw Log Line')}
+            ${detailRow('raw_line', log.raw_line)}
+        </div>
+    `;
+    openModal('log-modal');
+}
+
+async function openAlertDetail(id) {
+    const a = await fetchJSON(`/api/alerts/${id}`);
+    document.getElementById('alert-modal-body').innerHTML = `
+        <div class="detail-grid">
+            ${detailSection('Alert Info')}
+            ${detailRow('ID', a.id)}
+            ${detailRow('Timestamp', a.timestamp)}
+            ${detailRow('Rule ID', a.rule_id)}
+            ${detailRow('Rule Name', a.rule_name)}
+            ${detailRow('Severity', a.severity)}
+            ${detailRow('Risk Score', a.risk_score)}
+            ${detailRow('Status', a.status)}
+            ${detailSection('Attack Details')}
+            ${detailRow('Source IP', a.source_ip)}
+            ${detailRow('Country', a.country)}
+            ${detailRow('Latitude', a.latitude)}
+            ${detailRow('Longitude', a.longitude)}
+            ${detailRow('Description', a.description)}
+            ${detailSection('MITRE ATT\u0026CK')}
+            ${detailRow('Tactic', a.mitre_tactic)}
+            ${detailRow('Technique', a.mitre_technique)}
+            ${detailRow('Name', a.mitre_name)}
+            ${detailSection('Evidence / Raw Log')}
+            ${detailRow('evidence', a.evidence)}
+            ${detailSection('Analyst Notes')}
+            ${detailRow('Incident ID', a.incident_id)}
+            ${detailRow('Notes', a.analyst_notes)}
+        </div>
+    `;
+    openModal('alert-modal');
+}
+
+async function openIncidentDetail(id) {
+    const i = await fetchJSON(`/api/incidents/${id}`);
+    document.getElementById('incident-modal-body').innerHTML = `
+        <div class="detail-grid">
+            ${detailSection('Incident Info')}
+            ${detailRow('ID', i.id)}
+            ${detailRow('Created At', i.created_at)}
+            ${detailRow('Updated At', i.updated_at)}
+            ${detailRow('Title', i.title)}
+            ${detailRow('Severity', i.severity)}
+            ${detailRow('Status', i.status)}
+            ${detailRow('Attack Type', i.attack_type)}
+            ${detailSection('Source / Context')}
+            ${detailRow('Source IP', i.source_ip)}
+            ${detailRow('Description', i.description)}
+            ${detailSection('MITRE ATT\u0026CK')}
+            ${detailRow('Tactic', i.mitre_tactic)}
+            ${detailRow('Technique', i.mitre_technique)}
+            ${detailSection('Analyst Notes')}
+            ${detailRow('Notes', i.analyst_notes)}
+        </div>
+    `;
+    openModal('incident-modal');
 }

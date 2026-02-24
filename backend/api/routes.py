@@ -197,6 +197,15 @@ async def search_logs(
     return [_log_dict(l) for l in result.scalars().all()]
 
 
+@router.get("/logs/{log_id}")
+async def get_log_entry(log_id: int, session: AsyncSession = Depends(get_session)):
+    result = await session.execute(select(LogEntry).where(LogEntry.id == log_id))
+    entry = result.scalar_one_or_none()
+    if not entry:
+        raise HTTPException(status_code=404, detail="Log entry not found")
+    return _log_dict_full(entry)
+
+
 # ── Blocked IPs ──────────────────────────────────────────────────────────────
 @router.get("/blocked-ips")
 async def list_blocked_ips(session: AsyncSession = Depends(get_session)):
@@ -597,6 +606,25 @@ def _log_dict(l: LogEntry) -> dict:
         "method": l.method, "url": l.url, "status_code": l.status_code,
         "user_agent": l.user_agent, "log_source": l.log_source,
         "country": l.country,
+    }
+
+
+def _log_dict_full(l: LogEntry) -> dict:
+    return {
+        "id": l.id,
+        "timestamp": str(l.timestamp),
+        "source_ip": l.source_ip,
+        "method": l.method,
+        "url": l.url,
+        "status_code": l.status_code,
+        "user_agent": l.user_agent,
+        "body": l.body,
+        "log_source": l.log_source,
+        "raw_line": l.raw_line,
+        "country": l.country,
+        "city": l.city,
+        "latitude": l.latitude,
+        "longitude": l.longitude,
     }
 
 

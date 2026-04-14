@@ -1,3 +1,152 @@
+# DefMon
+
+Real-time web security monitoring and response platform.
+
+DefMon ingests real access logs (Apache/Nginx), classifies each event as `normal` or `malicious`, generates alerts, executes SOAR playbooks, and exposes API + dashboard views for SOC operations.
+
+## What Is Included
+
+- Backend API: FastAPI (`defmon/`)
+- Detection engine: rule + threshold + behavioral (`defmon/detection/engine.py`)
+- SOAR actions/playbooks (`defmon/soar/`)
+- Remote sender ingestion (`/api/senders/ingest`)
+- Frontend dashboard: React + Vite (`frontend/`)
+- Database migrations: Alembic (`alembic/versions/`)
+- Linux VM log forwarder script (`scripts/linux_log_forwarder.py`)
+
+## Run On Any Machine
+
+### Option A: Docker (Recommended)
+
+Prerequisites:
+
+- Docker
+- Docker Compose
+
+Steps:
+
+1. Clone repository
+
+```bash
+git clone https://github.com/yogesh35/defmon.git
+cd defmon
+```
+
+2. Create environment file
+
+```bash
+cp .env.example .env
+```
+
+3. Start all services
+
+```bash
+docker compose up --build -d
+```
+
+This starts:
+
+- PostgreSQL on `localhost:5432`
+- DefMon API on `http://localhost:8000`
+- Frontend on `http://localhost:3000`
+
+4. Create default admin account (first run)
+
+```bash
+docker compose exec defmon-api python -m defmon.seed
+```
+
+Default seeded login:
+
+- Username: `admin`
+- Password: `admin`
+
+5. Verify
+
+```bash
+curl http://localhost:8000/health
+```
+
+### Option B: Local Python + Node
+
+Prerequisites:
+
+- Python 3.11+
+- Node.js 20+
+- PostgreSQL 15+
+
+Backend:
+
+```bash
+python -m venv .venv
+source .venv/bin/activate  # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+cp .env.example .env
+alembic upgrade head
+python -m defmon.seed
+uvicorn defmon.main:app --host 0.0.0.0 --port 8000
+```
+
+Frontend (new terminal):
+
+```bash
+cd frontend
+npm ci
+npm run dev -- --host
+```
+
+## Key Endpoints
+
+- Health: `GET /health`
+- API docs: `GET /docs`
+- Login: `POST /api/auth/login`
+- Alerts: `GET /api/alerts`
+- Incidents: `GET /api/incidents`
+- Received logs: `GET /api/logs/received`
+- Sender management: `POST /api/senders` and related endpoints
+- Remote ingest: `POST /api/senders/ingest?sender_id=<id>&sender_key=<key>`
+
+## Real Linux Log Ingestion
+
+1. Create sender from admin API (`/api/senders`) and save `sender.id` + `api_key`
+2. On Linux VM, run forwarder:
+
+```bash
+python3 linux_log_forwarder.py \
+  --api-base "http://<DEFMON_HOST>:8000" \
+  --sender-id "<SENDER_ID>" \
+  --sender-key "<SENDER_KEY>" \
+  --log-path /var/log/nginx/access.log
+```
+
+3. Validate classification:
+
+```bash
+curl -H "Authorization: Bearer <JWT>" \
+  "http://<DEFMON_HOST>:8000/api/logs/received?limit=50&sender_id=<SENDER_ID>"
+```
+
+Each stored event includes:
+
+- `classification`: `normal` or `malicious`
+- `is_malicious`: `true`/`false`
+
+## Common Commands
+
+```bash
+make dev        # docker compose up --build
+make stop       # docker compose down
+make clean      # docker compose down -v
+make migrate    # run alembic migrations in api container
+make test       # run pytest in api container
+make test-local # run pytest locally
+```
+
+## Notes
+
+- `docker-compose.yml` is now aligned to the current `defmon/` codebase.
+- If using AbuseIPDB, set `ABUSEIPDB_KEY` in `.env`.
+- Prometheus metrics are exposed by backend on `/metrics`.
 # Defmon — Website Security Monitoring & Automated Response
 
 A real-time website security monitoring and automated response framework integrating **SIEM** (Security Information and Event Management) and **SOAR** (Security Orchestration, Automation, and Response) for web application defense.

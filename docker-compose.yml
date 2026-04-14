@@ -1,31 +1,64 @@
 version: "3.9"
 
 services:
-  siem:
-    build:
-      context: .
-      dockerfile: docker/Dockerfile
-    container_name: defmon
-    ports:
-      - "8000:8000"
-    volumes:
-      - ./data:/app/data
+  postgres:
+    image: postgres:15-alpine
+    container_name: defmon-postgres
     environment:
-      - LOG_FILE=/app/data/logs/access.log
-      - AUTH_LOG_FILE=/app/data/logs/auth.log
-      - APP_LOG_FILE=/app/data/logs/app.log
-      - DATABASE_URL=sqlite+aiosqlite:///./data/db/siem.db
-      - JWT_SECRET=defmon-secret-change-in-production
+      POSTGRES_USER: ${DB_USER:-defmon}
+      POSTGRES_PASSWORD: ${DB_PASS:-changeme}
+      POSTGRES_DB: ${DB_NAME:-defmon}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-defmon} -d ${DB_NAME:-defmon}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
     restart: unless-stopped
 
-  simulator:
+  defmon-api:
     build:
       context: .
-      dockerfile: docker/Dockerfile
-    container_name: defmon-simulator
-    command: python -m simulator.generate_logs --rate medium
+      dockerfile: Dockerfile
+    container_name: defmon-api
+    env_file:
+      - .env
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: ${DB_USER:-defmon}
+      DB_PASS: ${DB_PASS:-changeme}
+      DB_NAME: ${DB_NAME:-defmon}
+      DEBUG: ${DEBUG:-false}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-dev-secret-change-me}
+      JWT_ALGORITHM: ${JWT_ALGORITHM:-HS256}
+      ABUSEIPDB_KEY: ${ABUSEIPDB_KEY:-}
+      WEBHOOK_URL: ${WEBHOOK_URL:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
     volumes:
       - ./data:/app/data
-    depends_on:
-      - siem
+      - ./config.yaml:/app/config.yaml:ro
+    ports:
+      - "8000:8000"
+    command: >
+      sh -c "alembic upgrade head && uvicorn defmon.main:app --host 0.0.0.0 --port 8000"
     restart: unless-stopped
+
+  defmon-frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: defmon-frontend
+    depends_on:
+      - defmon-api
+    ports:
+      - "3000:80"
+    restart: unless-stopped
+
+volumes:
+  postgres_data:

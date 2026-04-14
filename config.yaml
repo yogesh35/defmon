@@ -8,14 +8,11 @@ app:
   debug: false
   host: 0.0.0.0
   port: 8000
+  enable_local_collector: false
 
-# Real log sources to ingest in runtime mode.
-# You can override with LOG_PATHS env var (comma-separated paths).
-log_sources:
-  - /var/log/nginx/access.log
-  - /var/log/apache2/access.log
-  - /var/log/httpd/access_log
-  - /app/data/real_access.log
+# Local file sources are intentionally empty in remote-only mode.
+# DefMon should receive logs from Linux VMs via /api/senders/ingest.
+log_sources: []
 
 database:
   url: "postgresql+asyncpg://${DB_USER}:${DB_PASS}@${DB_HOST}:${DB_PORT}/${DB_NAME}"

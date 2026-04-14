@@ -1,7 +1,7 @@
 # DefMon — Makefile
 # Convenience targets for development, testing, and deployment.
 
-.PHONY: dev stop test lint migrate seed clean logs
+.PHONY: dev stop test lint migrate bootstrap-admin clean logs
 
 # Start full stack in development mode (hot-reload)
 dev:
@@ -41,9 +41,9 @@ lint-fix:
 	docker compose exec defmon-api ruff check --fix .
 	docker compose exec defmon-api black .
 
-# Insert 500 synthetic attack log events for demo and testing
-seed:
-	docker compose exec defmon-api python -m defmon.seed
+# Bootstrap admin account without creating synthetic logs
+bootstrap-admin:
+	docker compose exec defmon-api python -m defmon.bootstrap --username admin --password admin
 
 # View logs
 logs:

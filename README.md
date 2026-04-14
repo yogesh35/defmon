@@ -1,5 +1,118 @@
 # DefMon
 
+DefMon is a SIEM/SOAR platform that classifies incoming web logs as `normal` or `malicious` and automates responses.
+
+This project is now configured in **remote-only ingestion mode** by default:
+
+- No synthetic/fake log generation in normal setup
+- No local file collector stream unless explicitly enabled
+- Expected log source is Linux VM(s) via sender API
+
+## Run Locally (Docker)
+
+1. Clone and enter project:
+
+```bash
+git clone https://github.com/yogesh35/defmon.git
+cd defmon
+```
+
+2. Create env file:
+
+```bash
+cp .env.example .env
+```
+
+3. Start stack:
+
+```bash
+docker compose up --build -d
+```
+
+4. Run migrations/admin bootstrap:
+
+```bash
+docker compose exec defmon-api alembic upgrade head
+docker compose exec defmon-api python -m defmon.bootstrap --username admin --password admin
+```
+
+5. Open services:
+
+- Frontend: `http://localhost:3000`
+- API docs: `http://localhost:8000/docs`
+- Health: `http://localhost:8000/health`
+
+## Linux VM Log Ingestion (Only Source)
+
+### 1. Create a sender (Admin login required)
+
+Create sender credentials via API:
+
+```bash
+curl -X POST "http://<DEFMON_HOST>:8000/api/senders" \
+  -H "Authorization: Bearer <ADMIN_JWT>" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"linux-vm-01","description":"Linux VM","allowed_ip":"<VM_IP>"}'
+```
+
+Save:
+
+- `sender.id`
+- `api_key`
+
+### 2. Run the Linux forwarder on VM
+
+Use `scripts/linux_log_forwarder.py` on the Linux machine:
+
+```bash
+python3 linux_log_forwarder.py \
+  --api-base "http://<DEFMON_HOST>:8000" \
+  --sender-id "<SENDER_ID>" \
+  --sender-key "<SENDER_KEY>" \
+  --log-path /var/log/nginx/access.log
+```
+
+You can repeat `--log-path` for multiple files.
+
+### 3. Validate received logs
+
+```bash
+curl -H "Authorization: Bearer <JWT>" \
+  "http://<DEFMON_HOST>:8000/api/logs/received?sender_id=<SENDER_ID>&limit=100"
+```
+
+Each entry includes:
+
+- `classification` (`normal` or `malicious`)
+- `is_malicious` (`true` or `false`)
+
+## Important Settings
+
+In `.env`:
+
+- `ENABLE_LOCAL_COLLECTOR=false`
+- `USE_SEED_LOGS=false`
+
+In `config.yaml`:
+
+- `app.enable_local_collector: false`
+- `log_sources: []`
+
+These ensure logs come only from Linux VM sender ingestion.
+
+## Commands
+
+```bash
+make dev              # Start stack in foreground
+make up               # Start stack detached
+make stop             # Stop stack
+make clean            # Stop and remove volumes
+make migrate          # Run alembic upgrade
+make bootstrap-admin  # Create/update admin user
+make test             # Run tests in container
+```
+# DefMon
+
 Real-time web security monitoring and response platform.
 
 DefMon ingests real access logs (Apache/Nginx), classifies each event as `normal` or `malicious`, generates alerts, executes SOAR playbooks, and exposes API + dashboard views for SOC operations.

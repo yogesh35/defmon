@@ -18,17 +18,25 @@ settings = get_settings()
 async def lifespan(app: FastAPI):
     """Application lifespan — startup and shutdown logic."""
     logger.info(f"🛡️ {settings.app_name} v{settings.version} starting up")
-    pipeline = DefmonPipeline()
-    pipeline_task = asyncio.create_task(pipeline.run())
+    pipeline = None
+    pipeline_task = None
+
+    if settings.enable_local_collector:
+        pipeline = DefmonPipeline()
+        pipeline_task = asyncio.create_task(pipeline.run())
+        logger.info("Local file collector pipeline enabled")
+    else:
+        logger.info("Local file collector disabled: expecting logs from remote Linux senders only")
 
     yield
 
-    pipeline.stop()
-    pipeline_task.cancel()
-    try:
-        await pipeline_task
-    except asyncio.CancelledError:
-        logger.info("DefMon runtime pipeline stopped")
+    if pipeline is not None and pipeline_task is not None:
+        pipeline.stop()
+        pipeline_task.cancel()
+        try:
+            await pipeline_task
+        except asyncio.CancelledError:
+            logger.info("DefMon runtime pipeline stopped")
 
     logger.info(f"🛡️ {settings.app_name} shutting down")
 

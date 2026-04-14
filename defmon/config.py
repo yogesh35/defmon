@@ -34,6 +34,10 @@ class Settings:
         self.debug = os.getenv("DEBUG", str(app.get("debug", False))).lower() == "true"
         self.host = app.get("host", "0.0.0.0")
         self.port = app.get("port", 8000)
+        self.enable_local_collector = (
+            os.getenv("ENABLE_LOCAL_COLLECTOR", str(app.get("enable_local_collector", False))).lower()
+            == "true"
+        )
 
         # Log sources
         log_sources_env = os.getenv("LOG_PATHS", "").strip()

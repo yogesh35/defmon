@@ -1,0 +1,118 @@
+# DefMon — Master Configuration
+# All thresholds, rules, and playbook triggers are defined here.
+# Zero hardcoded values in source code.
+
+app:
+  name: DefMon
+  version: 1.0.0
+  debug: false
+  host: 0.0.0.0
+  port: 8000
+
+# Real log sources to ingest in runtime mode.
+# You can override with LOG_PATHS env var (comma-separated paths).
+log_sources:
+  - /var/log/nginx/access.log
+  - /var/log/apache2/access.log
+  - /var/log/httpd/access_log
+  - /app/data/real_access.log
+
+database:
+  url: "postgresql+asyncpg://${DB_USER}:${DB_PASS}@${DB_HOST}:${DB_PORT}/${DB_NAME}"
+  pool_size: 10
+  max_overflow: 20
+
+log_parser:
+  patterns:
+    apache_combined: '^(?P<ip>\S+) \S+ \S+ \[(?P<timestamp>[^\]]+)\] "(?P<method>\S+) (?P<uri>\S+) \S+" (?P<status>\d{3}) (?P<bytes>\S+) "(?P<referrer>[^"]*)" "(?P<user_agent>[^"]*)"'
+    nginx_access: '^(?P<ip>\S+) - \S+ \[(?P<timestamp>[^\]]+)\] "(?P<method>\S+) (?P<uri>\S+) \S+" (?P<status>\d{3}) (?P<bytes>\S+) "(?P<referrer>[^"]*)" "(?P<user_agent>[^"]*)"'
+
+detection:
+  rules:
+    - rule_id: SQLI_001
+      pattern: "(?i)(union[\\s+]+select|or[\\s+]+1[\\s*]*=[\\s*]*1|'[\\s*]*or[\\s*]*'|select[\\s+]+.*from|drop[\\s+]+table|insert[\\s+]+into|delete[\\s+]+from|update[\\s+]+.*set)"
+      severity: Critical
+      description: "SQL Injection attempt detected"
+      weight: 40
+
+    - rule_id: XSS_001
+      pattern: "(?i)(<script[^>]*>|javascript:|on(error|load|click|mouseover)[\\s*]*=|<img[^>]+onerror)"
+      severity: High
+      description: "Cross-Site Scripting (XSS) attempt detected"
+      weight: 30
+
+    - rule_id: TRAVERSAL_001
+      pattern: "(\\.\\.[\\/\\\\]|%2e%2e%2f|%2e%2e/|\\.\\.%2f)"
+      severity: High
+      description: "Directory traversal attempt detected"
+      weight: 30
+
+  threshold:
+    window_seconds: 300
+    max_failed_logins: 10
+    max_404_rate: 50
+    brute_force_severity: High
+    scan_severity: Medium
+
+  behavioral:
+    baseline_window_minutes: 60
+    anomaly_multiplier: 3.0
+    min_baseline_samples: 10
+    anomaly_severity: Medium
+
+  dedup_window_seconds: 600
+
+  risk_scoring:
+    severity_weights:
+      Critical: 40
+      High: 30
+      Medium: 20
+      Low: 10
+    threat_intel_weight: 25
+    frequency_weight: 15
+
+threat_intel:
+  ttl_seconds: 3600
+  offline_db_path: "data/threat_intel.csv"
+  abuseipdb:
+    base_url: "https://api.abuseipdb.com/api/v2"
+    max_age_days: 90
+    confidence_threshold: 50
+  category_map:
+    3: "fraud"
+    4: "ddos"
+    7: "bruteforce"
+    9: "scanner"
+    10: "spam"
+    14: "port_scan"
+    18: "bruteforce"
+    20: "exploit"
+    21: "malware"
+    22: "botnet"
+    23: "tor_exit"
+
+soar:
+  use_system_block: false
+  playbooks:
+    Critical:
+      - block_ip
+      - lock_account
+      - create_incident
+      - send_alert_notification
+    High:
+      - block_ip
+      - create_incident
+      - send_alert_notification
+    Medium:
+      - create_incident
+      - send_alert_notification
+    Low:
+      - create_incident
+
+auth:
+  algorithm: HS256
+  access_token_expire_minutes: 30
+  roles:
+    - admin
+    - analyst
+    - viewer

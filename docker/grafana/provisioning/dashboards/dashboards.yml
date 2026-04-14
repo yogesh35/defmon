@@ -1,0 +1,11 @@
+apiVersion: 1
+
+providers:
+  - name: 'DefMon Dashboards'
+    orgId: 1
+    folder: 'DefMon Observability'
+    type: file
+    disableDeletion: false
+    editable: true
+    options:
+      path: /etc/grafana/provisioning/dashboards

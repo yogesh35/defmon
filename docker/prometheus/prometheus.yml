@@ -1,0 +1,13 @@
+global:
+  scrape_interval: 15s     # How frequently to scrape targets by default.
+  evaluation_interval: 15s # How frequently to evaluate rules.
+
+scrape_configs:
+  # The job name is added as a label `job=<job_name>` to any timeseries scraped from this config.
+  - job_name: "defmon_api"
+    
+    # Scrape FastAPI metrics endpoint
+    metrics_path: "/metrics"
+    
+    static_configs:
+      - targets: ["defmon-api:8000"]

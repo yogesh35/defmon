@@ -1,0 +1,16 @@
+ip,score,tags,country_code,last_reported_at
+192.168.1.200,95,botnet|scanner,CN,2024-10-01T12:00:00Z
+10.10.10.10,85,bruteforce|scanner,RU,2024-09-28T08:30:00Z
+172.16.0.50,75,tor_exit|exploit,DE,2024-09-25T15:45:00Z
+203.0.113.1,90,ddos|botnet,BR,2024-10-02T10:00:00Z
+198.51.100.5,60,spam|scanner,US,2024-09-20T09:00:00Z
+192.0.2.100,80,malware|exploit,KR,2024-10-01T07:15:00Z
+45.33.32.156,70,scanner|port_scan,US,2024-09-30T11:00:00Z
+185.220.101.1,95,tor_exit|bruteforce,NL,2024-10-03T14:30:00Z
+23.129.64.200,88,tor_exit|botnet,US,2024-10-01T16:00:00Z
+91.240.118.172,92,bruteforce|malware,UA,2024-09-29T06:45:00Z
+222.186.42.7,98,ddos|scanner|botnet,CN,2024-10-04T03:20:00Z
+177.54.150.200,65,spam|fraud,BR,2024-09-18T12:00:00Z
+109.237.111.33,78,exploit|port_scan,RO,2024-09-22T08:00:00Z
+5.188.210.101,91,bruteforce|malware|scanner,RU,2024-10-02T20:00:00Z
+116.31.116.42,87,botnet|ddos,CN,2024-09-27T04:00:00Z

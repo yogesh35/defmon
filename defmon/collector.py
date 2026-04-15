@@ -46,19 +46,16 @@ class LogCollector:
         self._callback = callback
         self._running = False
 
-        # Prefer configured real log sources. Use seed logs only when explicitly enabled.
+        # Prefer configured real log sources.
         if log_paths is None:
             log_paths = list(self._settings.log_sources or [])
             if not log_paths:
-                if self._settings.use_seed_logs:
-                    log_paths = ["data/seed_access.log"]
-                else:
-                    log_paths = [
-                        "/var/log/nginx/access.log",
-                        "/var/log/apache2/access.log",
-                        "/var/log/httpd/access_log",
-                        "/app/data/real_access.log",
-                    ]
+                log_paths = [
+                    "/var/log/nginx/access.log",
+                    "/var/log/apache2/access.log",
+                    "/var/log/httpd/access_log",
+                    "/app/data/real_access.log",
+                ]
 
         self._log_paths = [Path(p) for p in log_paths]
 

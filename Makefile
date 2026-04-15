@@ -1,7 +1,7 @@
 # DefMon — Makefile
 # Convenience targets for development, testing, and deployment.
 
-.PHONY: dev stop test lint migrate bootstrap-admin clean logs
+.PHONY: dev up stop test test-local lint lint-fix migrate bootstrap-admin seed clean logs logs-all send-real-logs rebuild status
 
 # Start full stack in development mode (hot-reload)
 dev:
@@ -45,6 +45,10 @@ lint-fix:
 bootstrap-admin:
 	docker compose exec defmon-api python -m defmon.bootstrap --username admin --password admin
 
+# Create default admin account
+seed:
+	docker compose exec defmon-api python -m defmon.seed
+
 # View logs
 logs:
 	docker compose logs -f defmon-api
@@ -52,6 +56,12 @@ logs:
 # View all service logs
 logs-all:
 	docker compose logs -f
+
+# Send real access logs continuously to local API (Ctrl+C to stop)
+send-real-logs:
+	@API_PORT="$$(docker compose port defmon-api 8000 2>/dev/null | awk -F: 'END{print $$NF}')"; \
+	if [ -z "$$API_PORT" ]; then API_PORT="$${API_HOST_PORT:-18000}"; fi; \
+	python3 scripts/original_log_sender.py --api-base "http://localhost:$$API_PORT" --log-path data/logs/access.log --continuous --batch-size 5 --lines-per-cycle 5 --repeat-delay-seconds 0.5 --malicious-rate 0.25
 
 # Rebuild without cache
 rebuild:

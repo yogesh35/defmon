@@ -46,8 +46,6 @@ class Settings:
         else:
             self.log_sources = self._config.get("log_sources", [])
 
-        self.use_seed_logs = os.getenv("USE_SEED_LOGS", "false").lower() == "true"
-
         # Auth
         self.jwt_secret = os.getenv("JWT_SECRET_KEY", "dev-secret-change-me")
         self.jwt_algorithm = os.getenv("JWT_ALGORITHM", "HS256")

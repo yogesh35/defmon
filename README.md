@@ -126,6 +126,7 @@ DefMon ingests real access logs (Apache/Nginx), classifies each event as `normal
 - Frontend dashboard: React + Vite (`frontend/`)
 - Database migrations: Alembic (`alembic/versions/`)
 - Linux VM log forwarder script (`scripts/linux_log_forwarder.py`)
+- Original log sender (`scripts/original_log_sender.py`)
 
 ## Run On Any Machine
 
@@ -159,9 +160,11 @@ docker compose up --build -d
 
 This starts:
 
-- PostgreSQL on `localhost:5432`
-- DefMon API on `http://localhost:8000`
-- Frontend on `http://localhost:3000`
+- PostgreSQL on `localhost:${POSTGRES_HOST_PORT}` (default `15432`)
+- DefMon API on `http://localhost:${API_HOST_PORT}` (default `18000`)
+- Frontend on `http://localhost:${FRONTEND_HOST_PORT}` (default `13000`)
+
+These host ports are configurable in `.env` so DefMon can run alongside other Docker projects.
 
 4. Create default admin account (first run)
 
@@ -169,7 +172,7 @@ This starts:
 docker compose exec defmon-api python -m defmon.seed
 ```
 
-Default seeded login:
+Default login:
 
 - Username: `admin`
 - Password: `admin`
@@ -177,7 +180,7 @@ Default seeded login:
 5. Verify
 
 ```bash
-curl http://localhost:8000/health
+curl http://localhost:18000/health
 ```
 
 ### Option B: Local Python + Node
@@ -225,12 +228,28 @@ npm run dev -- --host
 2. On Linux VM, run forwarder:
 
 ```bash
-python3 linux_log_forwarder.py \
+python3 scripts/linux_log_forwarder.py \
   --api-base "http://<DEFMON_HOST>:8000" \
   --sender-id "<SENDER_ID>" \
   --sender-key "<SENDER_KEY>" \
   --log-path /var/log/nginx/access.log
 ```
+
+If DefMon receiver is running on Windows (WSL/Linux VM sender), use Windows receiver mode:
+
+```bash
+python3 scripts/linux_log_forwarder.py \
+  --windows-receiver \
+  --sender-id "<SENDER_ID>" \
+  --sender-key "<SENDER_KEY>" \
+  --log-path /var/log/nginx/access.log
+```
+
+Optional Windows mode overrides:
+
+- `--windows-host <WINDOWS_IP>` when auto-detection cannot resolve the receiver
+- `--receiver-port <PORT>` if API is not exposed on `8000`
+- `DEFMON_WINDOWS_HOST=<WINDOWS_IP>` for a persistent default host
 
 3. Validate classification:
 
@@ -244,6 +263,33 @@ Each stored event includes:
 - `classification`: `normal` or `malicious`
 - `is_malicious`: `true`/`false`
 
+## Original Log Sender (Real Logs)
+
+Send real access log lines to DefMon. The sender logs in as admin, creates a sender identity,
+reads real log files, and forwards them to `/api/senders/ingest`.
+
+```bash
+python3 scripts/original_log_sender.py \
+  --api-base "http://localhost:18000" \
+  --username "admin" \
+  --password "admin" \
+  --log-path /var/log/nginx/access.log \
+  --log-path /var/log/apache2/access.log \
+  --lines-per-file 300 \
+  --batch-size 100
+```
+
+For continuous generation until you stop it, add:
+
+```bash
+--continuous --lines-per-cycle 5 --batch-size 5 --repeat-delay-seconds 0.5 --malicious-rate 0.25
+```
+
+Per batch, the sender prints DefMon-classified counts:
+
+- `malicious_lines`
+- `normal_lines`
+
 ## Common Commands
 
 ```bash
@@ -253,6 +299,7 @@ make clean      # docker compose down -v
 make migrate    # run alembic migrations in api container
 make test       # run pytest in api container
 make test-local # run pytest locally
+make send-real-logs # send 5 logs every 0.5s, injecting random malicious lines (Ctrl+C to stop)
 ```
 
 ## Notes
@@ -304,7 +351,7 @@ A real-time website security monitoring and automated response framework integra
 - Risk scoring and alert deduplication
 
 ### SOAR — Automated Response
-- Automated IP blocking (firewall simulation)
+- Automated IP blocking (firewall orchestration)
 - **Compromised account locking**
 - Dynamic blacklist management
 - Incident ticket generation
@@ -354,23 +401,22 @@ docker-compose up --build
 ```bash
 pip install -r requirements.txt
 # Terminal 1: Start backend
-python -m backend.main
-# Terminal 2: Start log simulator
-python -m simulator.generate_logs
-# Open http://localhost:8000 in browser
+uvicorn defmon.main:app --host 0.0.0.0 --port 8000
+# Terminal 2: Send real logs
+python3 scripts/original_log_sender.py --api-base http://localhost:18000 --log-path /var/log/nginx/access.log
+# Open http://localhost:13000 in browser
 ```
 
 ### Default Credentials
 | Username | Password | Role |
 |----------|----------|------|
-| admin | admin123 | Admin |
-| analyst | analyst123 | Analyst |
+| admin | admin | Admin |
 
-## Simulating Attacks
+## Sending Real Logs
 ```bash
-python -m simulator.generate_logs
+python3 scripts/original_log_sender.py --api-base http://localhost:18000 --log-path /var/log/nginx/access.log
 # With options:
-python -m simulator.generate_logs --rate fast --duration 300
+python3 scripts/original_log_sender.py --api-base http://localhost:18000 --log-path /var/log/nginx/access.log --lines-per-file 1000 --batch-size 200
 ```
 
 ## API Endpoints
@@ -476,8 +522,9 @@ defmon/
 │       ├── index.html       # Login + SOC Dashboard
 │       ├── css/dashboard.css
 │       └── js/dashboard.js
-├── simulator/
-│   └── generate_logs.py     # Attack log simulator
+├── scripts/
+│   ├── linux_log_forwarder.py
+│   └── original_log_sender.py
 ├── data/
 │   ├── logs/                # Log files
 │   ├── db/                  # SQLite database

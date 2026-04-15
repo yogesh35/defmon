@@ -18,9 +18,12 @@ async def get_audit_logs(
     user: User = Depends(allow_read),
     db: AsyncSession = Depends(get_db),
 ) -> list[dict]:
-    """Return latest SOAR actions from immutable audit log."""
+    """Return latest SOAR response actions from immutable audit log."""
     result = await db.execute(
-        select(AuditLog).order_by(desc(AuditLog.timestamp)).limit(limit)
+        select(AuditLog)
+        .where(AuditLog.actor == "SOAR")
+        .order_by(desc(AuditLog.timestamp))
+        .limit(limit)
     )
     rows = result.scalars().all()
 

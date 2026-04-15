@@ -1,6 +1,6 @@
 """DefMon executive overview API endpoint."""
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends
 from sqlalchemy import func, select, desc
@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from defmon.api.auth import RoleChecker
 from defmon.database import get_db
-from defmon.models import Alert, AuditLog, BlockedIP, Incident, IncidentStatus, User, UserRole
+from defmon.models import Alert, AuditLog, BlockedIP, Incident, IncidentStatus, LogEntry, User, UserRole
 
 overview_router = APIRouter(prefix="/overview", tags=["Overview"])
 allow_read = RoleChecker([UserRole.VIEWER, UserRole.ANALYST, UserRole.ADMIN])
@@ -40,8 +40,13 @@ async def get_overview(
     blocked_ips = await db.scalar(select(func.count(BlockedIP.id))) or 0
 
     actions_24h = await db.scalar(
-        select(func.count(AuditLog.id)).where(AuditLog.timestamp >= twenty_four_hours_ago)
+        select(func.count(AuditLog.id)).where(
+            AuditLog.timestamp >= twenty_four_hours_ago,
+            AuditLog.actor == "SOAR",
+        )
     ) or 0
+
+    logs_received = await db.scalar(select(func.count(LogEntry.id))) or 0
 
     top_rule_row = (await db.execute(
         select(Alert.rule_id, func.count(Alert.id).label("count"))
@@ -62,12 +67,13 @@ async def get_overview(
     response_per_alert = round((actions_24h / alerts_24h), 2) if alerts_24h else 0.0
 
     return {
-        "generated_at": datetime.utcnow().isoformat(),
+        "generated_at": datetime.now(timezone.utc).isoformat(),
         "alerts_24h": int(alerts_24h),
         "critical_24h": int(critical_24h),
         "open_incidents": int(open_incidents),
         "blocked_ips": int(blocked_ips),
         "actions_24h": int(actions_24h),
+        "logs_received": int(logs_received),
         "response_per_alert": response_per_alert,
         "top_rule": {
             "rule_id": top_rule_row[0],
